@@ -1,0 +1,179 @@
+;'''''''''''''''''''''''''''''''''''''''''''''''''''
+; Teraterm Macro Language
+; Description       : Automate server login
+; Author            : Jingun Jung
+; Licence           : Apache License 2.0
+; Source            : https://github.com/koreabigname/server-login-ttl
+; Date              : 2015-04-21
+; Modification History
+;
+;   Author          Date          Reason      Comment
+;   ------------    ----------    --------    ---------
+;
+;'''''''''''''''''''''''''''''''''''''''''''''''''''
+; Setting
+strconcat SSH_PORT              '22'
+strconcat LOG_DIR_PATH          'C:\Temp\log'
+strconcat TERM_INI_PATH         'C:\Temp'
+strconcat LOGIN_FILENAME        'C:\Temp\LOGIN.DAT'
+strconcat FLAG_RECONN_SSH       'YES'
+strconcat FLAG_CONN_SU          'YES'
+strconcat LOGIN_CONN_IP         '192.168.0.11'
+strconcat SSH_CONN_IP           '192.168.0.11'
+strconcat SERVER_TYPE           'SERVER'
+strconcat PROMPT_LOGIN_PS1      '$'
+strconcat PROMPT_RELOGIN_PS1    '$'
+strconcat PROMPT_AFTER_SU       '$'
+strconcat PROMPT_RELOGIN_PW     ':'
+strconcat PROMPT_CHANGE_USER_PW ':'
+strconcat ALIAS_LL              'alias ll=" -ltr"'
+
+; Teraterm Color Window
+strdim teraterm_color_array 6
+teraterm_color_array[0] = 'FG：White,  BG：Black (Default)' 
+teraterm_color_array[1] = 'FG：Black,  BG：White ' 
+teraterm_color_array[2] = 'FG：White,  BG：Blue' 
+teraterm_color_array[3] = 'FG：White,  BG：Green ' 
+teraterm_color_array[4] = 'FG：White,  BG：Red' 
+teraterm_color_array[5] = 'FG：Yellow, BG：Black' 
+strdim teraterm_ini_color_array 6
+teraterm_ini_color_array[0] = 'TERATERM_Wh&Bk.INI' 
+teraterm_ini_color_array[1] = 'TERATERM_Bk&Wh.INI' 
+teraterm_ini_color_array[2] = 'TERATERM_Wh&Bl.INI' 
+teraterm_ini_color_array[3] = 'TERATERM_Wh&Gr.INI' 
+teraterm_ini_color_array[4] = 'TERATERM_Wh&Rd.INI' 
+teraterm_ini_color_array[5] = 'TERATERM_Yw&Bk.INI' 
+listbox 'Which color do you want on terminal?' 'Select' teraterm_color_array
+if result<0 then
+  end
+else
+  sprintf2 teraterm_ini_filename "%s\%s" TERM_INI_PATH teraterm_ini_color_array[result]
+endif
+
+; Is exist log folder
+sprintf2 msg_not_exist_log_dir_path '[%s] folder is not exist.' LOG_DIR_PATH
+filesearch LOG_DIR_PATH
+if result=0 then
+  messagebox msg_not_exist_log_dir_path 'Error Message'
+  end
+endif
+
+; Is exist Termterm INI files
+sprintf2 msg_not_exist_teraterm_ini '[%s] file is not exist.' teraterm_ini_filename
+filesearch teraterm_ini_filename
+if result=0 then
+  messagebox msg_not_exist_teraterm_ini 'Error Message'
+  end
+endif
+
+; Read user information
+getpassword LOGIN_FILENAME 'LOGIN_USER_ID'    login_user_id
+getpassword LOGIN_FILENAME 'LOGIN_USER_PW'    login_user_pw
+strcompare FLAG_RECONN_SSH 'YES'
+if result=0 then
+  getpassword LOGIN_FILENAME 'RELOGIN_USER_ID'    ssh_user_id
+  getpassword LOGIN_FILENAME 'RELOGIN_USER_PW'    ssh_user_pw
+endif
+strcompare FLAG_CONN_SU 'YES'
+if result=0 then
+  getpassword LOGIN_FILENAME 'CHANGE_USER_ID' change_user_id
+  getpassword LOGIN_FILENAME 'CHANGE_USER_PW' change_user_pw
+endif
+
+; Set log filename
+getdate logdate '%Y%m%d_%H%M%S_[&h]_'
+inputbox 'Please, Input log filename.' 'Input'
+strlen inputstr
+if result>0 then
+  strconcat input_log_basename inputstr
+else
+  messagebox 'Log filename is empty.' 'Error Message'
+  end
+endif
+
+; Set user name
+inputbox 'Please, Input user name' 'Input'
+strlen inputstr
+if result>0 then
+  sprintf2 log_filename '%s\%s%s_{%s(%s)@%s}.log' LOG_DIR_PATH logdate input_log_basename login_user_id inputstr SERVER_TYPE
+else
+  messagebox 'User name is empty.' 'Error Message'
+  end
+endif
+
+; Connect server
+sprintf2 conninfo '%s:%s /ssh /2 /auth=password /X=0 /Y=0 /user=%s /passwd=%s' LOGIN_CONN_IP SSH_PORT login_user_id login_user_pw
+connect conninfo
+
+; Load Teraterm INI file
+restoresetup teraterm_ini_filename
+
+; Change Title
+sprintf2 conntitle '%s (%s):%s' SERVER_TYPE login_user_id inputstr
+settitle conntitle
+
+; Relogin
+strcompare FLAG_RECONN_SSH 'YES'
+if result=0 then
+  sprintf2 cmdsshconn 'ssh -p %s %s@%s' SSH_PORT ssh_user_id SSH_CONN_IP
+  wait PROMPT_LOGIN_PS1
+  flushrecv
+  sendln cmdsshconn
+  wait PROMPT_RELOGIN_PW
+  flushrecv
+  sendln ssh_user_pw
+endif
+
+; Change User account
+strcompare FLAG_CONN_SU 'YES'
+if result=0 then
+  sprintf2 cmdchangeuser 'su - %s' change_user_id
+  wait PROMPT_RELOGIN_PS1
+  flushrecv
+  sendln cmdchangeuser
+  wait PROMPT_CHANGE_USER_PW
+  flushrecv
+  sendln change_user_pw
+endif
+
+; Set ALIAS
+wait PROMPT_AFTER_SU
+flushrecv
+sendln ALIAS_LL
+
+; Set PS1
+wait PROMPT_AFTER_SU
+flushrecv
+sendln 'export PS1='#$22'['#92'`if [ '#92'$? = 0 ]; then echo '#92'['#92'e[33m'#92']'#92'(^-^'#92')'#92'['#92'e[0m'#92']; else echo '#92'['#92'e[31m'#92']'#92'(T-T'#92')'#92'['#92'e[0m'#92']; fi'#92'` '#92'u@'#92'h '#92'['#92'033[1;34m'#92']'#92'$(tty | sed -e '#$27's:/dev/::'#$27') '#92'['#92'e[1;31m'#92']jobs:'#92'j'#92'['#92'e[0m'#92'] '#92'W]'#92'$ '#$22''
+
+wait PROMPT_AFTER_SU
+flushrecv
+sendln ''
+
+; Open log file
+logclose
+logopen log_filename 0 0
+
+; Execute command
+wait PROMPT_AFTER_SU
+flushrecv
+sendln 'id'
+
+; Execute command
+wait PROMPT_AFTER_SU
+flushrecv
+sendln ''
+
+; Execute command
+wait PROMPT_AFTER_SU
+flushrecv
+sendln 'date'
+
+; Execute command
+wait PROMPT_AFTER_SU
+flushrecv
+sendln ''
+
+; Set Teraterm configuration
+showtt 1
+showtt 6
